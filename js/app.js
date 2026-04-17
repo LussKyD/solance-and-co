@@ -7,9 +7,10 @@ let txs, customers, stock, profitTransfers;
 let activeTab='home', hFilter='all';
 let _mode='mpesa', _cart={onesie:0,glasses:0}, _payType='full', _wdType='restock';
 let _otherType='charge', _rstO=0, _rstG=0, _so=5, _sg=5;
-let _resId=null, _parsedMpesa=null, _mpesaClassify=null;
-
-// ──
+let _resId=null, _parsedMpesa=null;
+let _mpesaSelected=new Set(); // multi-select classify
+let _mpesaAllocs={}; // amount allocated per type
+let _mpesaSplitProd='onesie';
 function loadAll(){
   try{txs=JSON.parse(localStorage.getItem('sc_txs'))||(LIVE_MODE?[]:[])}catch(e){txs=[]}
   try{customers=JSON.parse(localStorage.getItem('sc_customers'))||{}}catch(e){customers={}}
@@ -146,11 +147,12 @@ function parseMpesa(){
   }
   const p=parseSaccoMsg(msg);
   _parsedMpesa=p;
+  _mpesaSelected=new Set();
+  _mpesaAllocs={};
   if(!p.amount){
     document.getElementById('parse-result').style.display='none';
     return;
   }
-  // Show parsed result
   document.getElementById('parse-result').style.display='block';
   document.getElementById('parse-rows').innerHTML=`
     <div class="pr-row"><span class="pr-k">direction</span><span class="pr-v">${p.direction==='credit'?'💰 money IN':'💸 money OUT'}</span></div>
@@ -158,26 +160,245 @@ function parseMpesa(){
     ${p.party?`<div class="pr-row"><span class="pr-k">from/to</span><span class="pr-v">${p.party}</span></div>`:''}
     ${p.date?`<div class="pr-row"><span class="pr-k">date</span><span class="pr-v">${p.date}</span></div>`:''}
     ${p.ref?`<div class="pr-row"><span class="pr-k">ref</span><span class="pr-v">${p.ref}</span></div>`:''}`;
-  // Show classify buttons based on direction
   document.getElementById('mpesa-classify').style.display='block';
+  // Credit types — multi-selectable (except split and test which are solo)
   if(p.direction==='credit'||!p.direction){
     document.getElementById('mpesa-type-grid').innerHTML=`
-      <button class="tbtn" id="mc-onesie" onclick="setMpesaType('onesie')"><span class="tbi">👕</span>Onesie</button>
-      <button class="tbtn" id="mc-glasses" onclick="setMpesaType('glasses')"><span class="tbi">🕶</span>Glasses</button>
-      <button class="tbtn" id="mc-delivery" onclick="setMpesaType('delivery')"><span class="tbi">🛵</span>Delivery fee</button>
-      <button class="tbtn" id="mc-split" onclick="setMpesaType('split')"><span class="tbi">✂️</span>Split part</button>
-      <button class="tbtn" id="mc-mixed" onclick="setMpesaType('mixed')"><span class="tbi">🛍️</span>Mixed order</button>
-      <button class="tbtn" id="mc-test" onclick="setMpesaType('test')"><span class="tbi">🧪</span>Test</button>`;
+      <button class="tbtn" id="mc-onesie" onclick="toggleMpesaType('onesie')"><span class="tbi">👕</span>Onesie</button>
+      <button class="tbtn" id="mc-glasses" onclick="toggleMpesaType('glasses')"><span class="tbi">🕶</span>Glasses</button>
+      <button class="tbtn" id="mc-delivery" onclick="toggleMpesaType('delivery')"><span class="tbi">🛵</span>Delivery fee</button>
+      <button class="tbtn solo" id="mc-split" onclick="toggleMpesaType('split')"><span class="tbi">✂️</span>Split part</button>
+      <button class="tbtn solo" id="mc-test" onclick="toggleMpesaType('test')"><span class="tbi">🧪</span>Test</button>`;
   } else {
     document.getElementById('mpesa-type-grid').innerHTML=`
-      <button class="tbtn" id="mc-restock" onclick="setMpesaType('restock')"><span class="tbi">📦</span>Restock</button>
-      <button class="tbtn" id="mc-laundry" onclick="setMpesaType('laundry')"><span class="tbi">🧺</span>Laundry</button>
-      <button class="tbtn" id="mc-del-cost" onclick="setMpesaType('del-cost')"><span class="tbi">🛵</span>Delivery cost</button>
-      <button class="tbtn" id="mc-profit-transfer" onclick="setMpesaType('profit-transfer')"><span class="tbi">◐</span>Profit transfer</button>
-      <button class="tbtn" id="mc-misc" onclick="setMpesaType('misc')"><span class="tbi">⋯</span>Misc / ops</button>`;
+      <button class="tbtn" id="mc-restock" onclick="toggleMpesaType('restock')"><span class="tbi">📦</span>Restock</button>
+      <button class="tbtn" id="mc-laundry" onclick="toggleMpesaType('laundry')"><span class="tbi">🧺</span>Laundry</button>
+      <button class="tbtn" id="mc-del-cost" onclick="toggleMpesaType('del-cost')"><span class="tbi">🛵</span>Delivery cost</button>
+      <button class="tbtn solo" id="mc-profit-transfer" onclick="toggleMpesaType('profit-transfer')"><span class="tbi">◐</span>Profit transfer</button>
+      <button class="tbtn solo" id="mc-misc" onclick="toggleMpesaType('misc')"><span class="tbi">⋯</span>Misc / ops</button>`;
   }
-  // Auto-fill date
   if(p.date)document.getElementById('l-date').value=p.date;
+}
+
+// ── MULTI-SELECT CLASSIFY ──
+// Solo types: selecting them clears all others
+const SOLO_TYPES=new Set(['split','test','profit-transfer','misc','del-cost','laundry','restock']);
+
+function toggleMpesaType(type){
+  const isSolo=SOLO_TYPES.has(type);
+  if(isSolo){
+    // Solo: clear everything and select only this
+    _mpesaSelected=new Set([type]);
+  } else {
+    // Multi: deselect any solo types first
+    SOLO_TYPES.forEach(s=>_mpesaSelected.delete(s));
+    if(_mpesaSelected.has(type)){
+      _mpesaSelected.delete(type);
+    } else {
+      _mpesaSelected.add(type);
+    }
+  }
+  refreshClassifyUI();
+}
+
+function refreshClassifyUI(){
+  // Update button highlights
+  document.querySelectorAll('#mpesa-type-grid .tbtn').forEach(b=>{
+    const id=b.id.replace('mc-','');
+    b.className='tbtn'+(b.classList.contains('solo')?' solo':'')+(
+      _mpesaSelected.has(id)?' sg':''
+    );
+  });
+
+  const p=_parsedMpesa;
+  const total=p?.amount||0;
+  const name=p?.party||'';
+  const extra=document.getElementById('mpesa-extra');
+
+  if(_mpesaSelected.size===0){
+    extra.style.display='none';
+    extra.innerHTML='';
+    return;
+  }
+  extra.style.display='block';
+
+  // Auto-suggest allocation when multiple types selected
+  if(_mpesaSelected.size>1){
+    autoSuggestAlloc(total);
+  } else {
+    // Single selection — set full amount
+    const type=[..._mpesaSelected][0];
+    _mpesaAllocs[type]=total;
+  }
+
+  buildExtraFields(name, total);
+}
+
+// Auto-suggest split based on known prices
+function autoSuggestAlloc(total){
+  const types=[..._mpesaSelected];
+  // Known prices for auto-detection
+  const prices={onesie:999, glasses:420, delivery:300};
+  let remaining=total;
+  // First pass: assign known product prices
+  types.forEach(t=>{
+    if(prices[t]&&!_mpesaAllocs[t]){
+      _mpesaAllocs[t]=prices[t];
+      remaining-=prices[t];
+    }
+  });
+  // Second pass: give remainder to delivery or first unpriced type
+  types.forEach(t=>{
+    if(!prices[t]&&!_mpesaAllocs[t]){
+      _mpesaAllocs[t]=Math.max(0,remaining);
+    }
+  });
+  // If remaining is off, put difference on delivery
+  const allocTotal=Object.values(_mpesaAllocs).reduce((a,b)=>a+b,0);
+  if(allocTotal!==total&&_mpesaAllocs['delivery']!==undefined){
+    _mpesaAllocs['delivery']=Math.max(0,_mpesaAllocs['delivery']+(total-allocTotal));
+  }
+}
+
+function buildExtraFields(name, total){
+  const types=[..._mpesaSelected];
+  const extra=document.getElementById('mpesa-extra');
+  let html='';
+
+  // Customer name field (shared across all product types)
+  const needsCust=types.some(t=>['onesie','glasses','delivery','split'].includes(t));
+  if(needsCust){
+    html+=`<div class="fg">
+      <label class="fl">customer name</label>
+      <div class="ac-wrap">
+        <input class="finput" id="mc-name" value="${name}" placeholder="e.g. Joan"
+          oninput="acInput(this,'mc-name-list')" onblur="acBlur('mc-name-list')" autocomplete="off">
+        <div class="ac-list" id="mc-name-list"></div>
+      </div>
+    </div>`;
+  }
+
+  // Amount allocation section — only when multi-select
+  if(types.length>1){
+    html+=`<div class="fg">
+      <label class="fl">amount split — total ${fmt(total)}</label>
+      <div style="display:flex;flex-direction:column;gap:6px" id="alloc-rows">`;
+    types.forEach(t=>{
+      const label={onesie:'👕 Onesie',glasses:'🕶 Glasses',delivery:'🛵 Delivery fee'}[t]||t;
+      const val=_mpesaAllocs[t]||0;
+      html+=`<div style="display:flex;align-items:center;gap:8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);padding:9px 12px">
+        <span style="font-size:12px;font-family:'DM Mono',monospace;color:var(--mu);flex:1">${label}</span>
+        <input type="number" id="alloc-${t}" value="${val}"
+          style="width:90px;background:transparent;border:none;font-size:14px;font-weight:700;font-family:'DM Mono',monospace;color:var(--gr);text-align:right;outline:none"
+          oninput="onAllocChange('${t}',${total})">
+      </div>`;
+    });
+    html+=`</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;font-family:'DM Mono',monospace;margin-top:6px;padding:0 2px">
+        <span style="color:var(--mu)">allocated</span>
+        <span id="alloc-total" style="color:var(--gr)">KSH 0</span>
+      </div>
+    </div>`;
+  }
+
+  // Per-type extra fields
+  types.forEach(t=>{
+    if(t==='onesie'){
+      const qty=Math.max(1,Math.round((types.length>1?(_mpesaAllocs['onesie']||999):total)/999));
+      html+=`<div class="fg">
+        <label class="fl">onesie quantity</label>
+        <div style="display:flex;align-items:center">
+          <button class="sb" onclick="mpesaQtyStep('onesie',-1)">−</button>
+          <span class="sv" id="mq-onesie">${qty}</span>
+          <button class="sb" onclick="mpesaQtyStep('onesie',1)">+</button>
+          <span style="font-size:11px;color:var(--mu);font-family:'DM Mono',monospace;margin-left:10px" id="mq-onesie-total">${fmt(qty*999)}</span>
+        </div>
+      </div>`;
+    } else if(t==='glasses'){
+      const qty=Math.max(1,Math.round((types.length>1?(_mpesaAllocs['glasses']||420):total)/420));
+      html+=`<div class="fg">
+        <label class="fl">glasses quantity</label>
+        <div style="display:flex;align-items:center">
+          <button class="sb" onclick="mpesaQtyStep('glasses',-1)">−</button>
+          <span class="sv" id="mq-glasses">${qty}</span>
+          <button class="sb" onclick="mpesaQtyStep('glasses',1)">+</button>
+          <span style="font-size:11px;color:var(--mu);font-family:'DM Mono',monospace;margin-left:10px" id="mq-glasses-total">${fmt(qty*420)}</span>
+        </div>
+      </div>`;
+    } else if(t==='delivery'){
+      const fee=_mpesaAllocs['delivery']||0;
+      html+=`<div class="fg">
+        <label class="fl">actual delivery cost (KSH)</label>
+        <input class="finput" id="mc-del-cost" type="number" placeholder="e.g. 450" oninput="updateDelCalc()">
+        <div style="background:var(--pkd);border:1px solid rgba(244,114,182,.2);border-radius:var(--rs);padding:9px 12px;margin-top:8px;font-size:11px;font-family:'DM Mono',monospace;color:var(--pk)" id="del-calc">enter cost above to see net profit</div>
+      </div>`;
+    } else if(t==='split'){
+      html+=`<div class="fg">
+        <label class="fl">what product?</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <button class="tbtn sg" id="msp-onesie" onclick="setMpesaSplitProd('onesie')"><span class="tbi">👕</span>Onesie</button>
+          <button class="tbtn" id="msp-glasses" onclick="setMpesaSplitProd('glasses')"><span class="tbi">🕶</span>Glasses</button>
+        </div>
+      </div>
+      <div class="split-hint" id="mc-sp-hint">
+        <div class="sh2-title" id="mc-sph-title"></div>
+        <div class="sh2-text" id="mc-sph-text"></div>
+        <div class="sh2-bar"><div class="sh2-fill" id="mc-sph-fill"></div></div>
+      </div>`;
+    } else if(t==='restock'){
+      html+=`<div class="fg">
+        <label class="fl">onesies restocked</label>
+        <div style="display:flex;align-items:center">
+          <button class="sb" onclick="mpesaQtyStep('rst-o',-1)">−</button>
+          <span class="sv" id="mq-rst-o">0</span>
+          <button class="sb" onclick="mpesaQtyStep('rst-o',1)">+</button>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">glasses restocked</label>
+        <div style="display:flex;align-items:center">
+          <button class="sb" onclick="mpesaQtyStep('rst-g',-1)">−</button>
+          <span class="sv" id="mq-rst-g">0</span>
+          <button class="sb" onclick="mpesaQtyStep('rst-g',1)">+</button>
+        </div>
+      </div>`;
+    } else if(t==='laundry'){
+      html+=`<div class="fg">
+        <label class="fl">onesies in this wash</label>
+        <input class="finput" id="mc-wash-units" type="number" placeholder="e.g. 5">
+      </div>`;
+    } else if(t==='profit-transfer'){
+      html+=`<div class="fg">
+        <label class="fl">note</label>
+        <input class="finput" id="mc-pt-note" placeholder="e.g. April profit">
+      </div>`;
+    }
+  });
+
+  extra.innerHTML=html;
+  updateAllocTotal(total);
+  // Attach split name listener if needed
+  const mcName=document.getElementById('mc-name');
+  if(mcName&&types.includes('split'))mcName.addEventListener('input',checkExistingSplit);
+}
+
+function onAllocChange(type, total){
+  const val=parseFloat(document.getElementById('alloc-'+type)?.value)||0;
+  _mpesaAllocs[type]=val;
+  updateAllocTotal(total);
+  // update del-calc if delivery is one of the types
+  if(type==='delivery')updateDelCalc();
+}
+
+function updateAllocTotal(total){
+  const types=[..._mpesaSelected];
+  if(types.length<2)return;
+  const sum=types.reduce((a,t)=>a+(parseFloat(document.getElementById('alloc-'+t)?.value)||0),0);
+  const el=document.getElementById('alloc-total');
+  if(el){
+    el.textContent=fmt(sum);
+    el.style.color=sum===total?'var(--gr)':'var(--re)';
+  }
 }
 
 // ──
@@ -245,9 +466,6 @@ function setMpesaType(type){
   }
 }
 
-let _mpesaSplitProd='onesie';
-
-// ──
 function setMpesaSplitProd(p){
   _mpesaSplitProd=p;
   document.getElementById('msp-onesie').className='tbtn'+(p==='onesie'?' sg':'');
@@ -274,9 +492,6 @@ function checkExistingSplit(){
   document.getElementById('mc-sph-fill').style.width=pct+'%';
 }
 
-let _mpesaQtys={};
-
-// ──
 function mpesaQtyStep(key,dir){
   if(!_mpesaQtys[key])_mpesaQtys[key]=parseInt(document.getElementById('mq-'+key)?.textContent)||1;
   _mpesaQtys[key]=Math.max(0,_mpesaQtys[key]+dir);
@@ -417,86 +632,74 @@ function submitTx(){
   const nid='u'+Date.now();
 
   if(_mode==='mpesa'){
-    if(!_parsedMpesa||!_mpesaClassify){showToast('Parse a message and classify it');return;}
+    if(!_parsedMpesa||_mpesaSelected.size===0){showToast('Parse a message and classify it');return;}
     const p=_parsedMpesa;
-    const am=p.amount;
     const ref=p.ref||'MPESA';
     const name=document.getElementById('mc-name')?.value.trim()||p.party||'';
+    const types=[..._mpesaSelected];
 
-    if(_mpesaClassify==='onesie'){
-      const qty=parseInt(document.getElementById('mq-onesie')?.textContent)||1;
-      stock.onesies=Math.max(0,stock.onesies-qty);
-      if(name&&document.getElementById('mc-name'))customers[name]=customers[name]||{};
-      txs.push({id:nid,d:dt,t:'onesie',c:name,a:am,units:qty,note:qty>1?qty+' onesies':'',doc:ref});
-      saveAll();closeSheet();renderAll();showToast(qty+'× onesie · '+fmt(am)+' ✓');
+    // Save customer if name provided
+    if(name) customers[name]=customers[name]||{};
 
-    } else if(_mpesaClassify==='glasses'){
-      const qty=parseInt(document.getElementById('mq-glasses')?.textContent)||1;
-      stock.glasses=Math.max(0,stock.glasses-qty);
-      txs.push({id:nid,d:dt,t:'glasses',c:name,a:am,units:qty,note:qty>1?qty+' glasses':'',doc:ref});
-      saveAll();closeSheet();renderAll();showToast(qty+'× glasses · '+fmt(am)+' ✓');
+    // Process each selected type
+    types.forEach((type,idx)=>{
+      const am=types.length>1?(parseFloat(document.getElementById('alloc-'+type)?.value)||0):p.amount;
+      const tid=nid+(idx>0?String.fromCharCode(98+idx-1):''); // nid, nida, nidb...
 
-    } else if(_mpesaClassify==='mixed'){
-      const qo=parseInt(document.getElementById('mq-mix-onesie')?.textContent)||0;
-      const qg=parseInt(document.getElementById('mq-mix-glasses')?.textContent)||0;
-      if(!qo&&!qg){showToast('Set quantities');return;}
-      const orderId='ord-'+Date.now();
-      if(qo>0){stock.onesies=Math.max(0,stock.onesies-qo);txs.push({id:nid,d:dt,t:'onesie',c:name,a:qo*999,units:qo,note:'mixed order',doc:ref,orderId});}
-      if(qg>0){stock.glasses=Math.max(0,stock.glasses-qg);txs.push({id:nid+'b',d:dt,t:'glasses',c:name,a:qg*420,units:qg,note:'mixed order',doc:ref,orderId});}
-      saveAll();closeSheet();renderAll();showToast('Mixed order ✓');
+      if(type==='onesie'){
+        const qty=parseInt(document.getElementById('mq-onesie')?.textContent)||1;
+        stock.onesies=Math.max(0,stock.onesies-qty);
+        txs.push({id:tid,d:dt,t:'onesie',c:name,a:am,units:qty,note:qty>1?qty+' onesies':'',doc:ref});
 
-    } else if(_mpesaClassify==='delivery'){
-      const cost=parseFloat(document.getElementById('mc-del-cost')?.value)||0;
-      const net=am-cost;
-      txs.push({id:nid,d:dt,t:'delivery_income',c:name,a:am,deliveryCost:cost,netProfit:net,note:`delivery · cost ${fmt(cost)} · net ${fmt(net)}`,doc:ref});
-      if(cost>0)txs.push({id:nid+'c',d:dt,t:'withdrawal',c:name,a:cost,p:'delivery_cost',note:`delivery cost for ${name}`,doc:ref});
-      saveAll();closeSheet();renderAll();showToast('Delivery logged · net '+fmt(net));
+      } else if(type==='glasses'){
+        const qty=parseInt(document.getElementById('mq-glasses')?.textContent)||1;
+        stock.glasses=Math.max(0,stock.glasses-qty);
+        txs.push({id:tid,d:dt,t:'glasses',c:name,a:am,units:qty,note:qty>1?qty+' glasses':'',doc:ref});
 
-    } else if(_mpesaClassify==='split'){
-      const prod=_mpesaSplitProd;
-      const target=(prod==='onesie'?999:420);
-      const existing=txs.filter(x=>x.t==='split_part'&&x.c.toLowerCase()===name.toLowerCase()&&x.splitProduct===prod);
-      const grp=existing.length?existing[0].splitGroup:name.toLowerCase().replace(/\s+/g,'-')+'-split-'+Date.now();
-      const sum=existing.reduce((a,x)=>a+x.a,0)+am;
-      const isDone=sum>=target;
-      if(isDone){if(prod==='onesie')stock.onesies=Math.max(0,stock.onesies-1);else stock.glasses=Math.max(0,stock.glasses-1);}
-      txs.push({id:nid,d:dt,t:'split_part',c:name,a:am,splitGroup:grp,splitTotal:target,splitProduct:prod,note:`split part ${existing.length+1}${isDone?' ✓':''}`,doc:ref});
-      saveAll();closeSheet();renderAll();showToast(isDone?'Split complete ✓':'Part added');
+      } else if(type==='delivery'){
+        const cost=parseFloat(document.getElementById('mc-del-cost')?.value)||0;
+        const net=am-cost;
+        txs.push({id:tid,d:dt,t:'delivery_income',c:name,a:am,deliveryCost:cost,netProfit:net,note:`delivery · cost ${fmt(cost)} · net ${fmt(net)}`,doc:ref});
+        if(cost>0)txs.push({id:tid+'x',d:dt,t:'withdrawal',c:name,a:cost,p:'delivery_cost',note:`delivery cost for ${name}`,doc:ref});
 
-    } else if(_mpesaClassify==='restock'){
-      const qo=parseInt(document.getElementById('mq-rst-o')?.textContent)||0;
-      const qg=parseInt(document.getElementById('mq-rst-g')?.textContent)||0;
-      stock.onesies+=qo;stock.glasses+=qg;
-      txs.push({id:nid,d:dt,t:'withdrawal',c:'',a:am,p:'restock',rstO:qo,rstG:qg,note:`restock · ${qo} onesies, ${qg} glasses`,doc:ref});
-      saveAll();closeSheet();renderAll();showToast('Restock logged ✓');
+      } else if(type==='split'){
+        const prod=_mpesaSplitProd;
+        const target=(prod==='onesie'?999:420);
+        const existing=txs.filter(x=>x.t==='split_part'&&x.c.toLowerCase()===name.toLowerCase()&&x.splitProduct===prod);
+        const grp=existing.length?existing[0].splitGroup:name.toLowerCase().replace(/\s+/g,'-')+'-split-'+Date.now();
+        const sum=existing.reduce((a,x)=>a+x.a,0)+am;
+        const isDone=sum>=target;
+        if(isDone){if(prod==='onesie')stock.onesies=Math.max(0,stock.onesies-1);else stock.glasses=Math.max(0,stock.glasses-1);}
+        txs.push({id:tid,d:dt,t:'split_part',c:name,a:am,splitGroup:grp,splitTotal:target,splitProduct:prod,note:`split part ${existing.length+1}${isDone?' ✓':''}`,doc:ref});
 
-    } else if(_mpesaClassify==='laundry'){
-      const wu=parseInt(document.getElementById('mc-wash-units')?.value)||0;
-      txs.push({id:nid,d:dt,t:'withdrawal',c:'',a:am,p:'laundry',washUnits:wu,note:`laundry · ${wu} onesies`,doc:ref});
-      saveAll();closeSheet();renderAll();showToast('Laundry logged ✓');
+      } else if(type==='restock'){
+        const qo=parseInt(document.getElementById('mq-rst-o')?.textContent)||0;
+        const qg=parseInt(document.getElementById('mq-rst-g')?.textContent)||0;
+        stock.onesies+=qo;stock.glasses+=qg;
+        txs.push({id:tid,d:dt,t:'withdrawal',c:'',a:am,p:'restock',rstO:qo,rstG:qg,note:`restock · ${qo} onesies, ${qg} glasses`,doc:ref});
 
-    } else if(_mpesaClassify==='del-cost'){
-      txs.push({id:nid,d:dt,t:'withdrawal',c:'',a:am,p:'delivery_cost',note:'delivery cost',doc:ref});
-      saveAll();closeSheet();renderAll();showToast('Delivery cost logged ✓');
+      } else if(type==='laundry'){
+        const wu=parseInt(document.getElementById('mc-wash-units')?.value)||0;
+        txs.push({id:tid,d:dt,t:'withdrawal',c:'',a:am,p:'laundry',washUnits:wu,note:`laundry · ${wu} onesies`,doc:ref});
 
-    } else if(_mpesaClassify==='profit-transfer'){
-      const note=document.getElementById('mc-pt-note')?.value.trim()||'';
-      profitTransfers.push({id:nid,d:dt,a:am,note,ref});
-      txs.push({id:nid+'p',d:dt,t:'withdrawal',c:'',a:am,p:'profit_transfer',note:'profit transfer to separate account',doc:ref});
-      saveAll();closeSheet();renderAll();showToast('Profit transfer logged ✓');
+      } else if(type==='del-cost'){
+        txs.push({id:tid,d:dt,t:'withdrawal',c:'',a:am,p:'delivery_cost',note:'delivery cost',doc:ref});
 
-    } else if(_mpesaClassify==='charge'){
-      txs.push({id:nid,d:dt,t:'charge',c:'',a:am,note:'bank charge',doc:ref});
-      saveAll();closeSheet();renderAll();showToast('Charge logged ✓');
+      } else if(type==='profit-transfer'){
+        const note=document.getElementById('mc-pt-note')?.value.trim()||'';
+        profitTransfers.push({id:tid,d:dt,a:am,note,ref});
+        txs.push({id:tid+'p',d:dt,t:'withdrawal',c:'',a:am,p:'profit_transfer',note:'profit transfer to separate account',doc:ref});
 
-    } else if(_mpesaClassify==='test'){
-      txs.push({id:nid,d:dt,t:'test',c:name,a:am,note:'test payment',doc:ref});
-      saveAll();closeSheet();renderAll();showToast('Marked as test ✓');
+      } else if(type==='test'){
+        txs.push({id:tid,d:dt,t:'test',c:name,a:am,note:'test payment',doc:ref});
 
-    } else if(_mpesaClassify==='misc'){
-      txs.push({id:nid,d:dt,t:'withdrawal',c:'',a:am,p:'misc',note:'misc / ops',doc:ref});
-      saveAll();closeSheet();renderAll();showToast('Logged ✓');
-    }
+      } else if(type==='misc'){
+        txs.push({id:tid,d:dt,t:'withdrawal',c:'',a:am,p:'misc',note:'misc / ops',doc:ref});
+      }
+    });
+
+    saveAll();closeSheet();renderAll();
+    showToast(types.length>1?`${types.length} items logged ✓`:`${types[0]} logged ✓`);
 
   } else if(_mode==='sale'){
     const total=_cart.onesie*999+_cart.glasses*420;
@@ -546,12 +749,55 @@ function submitTx(){
   }
 }
 
+
+// ── AUTOCOMPLETE ──
+function getCustomerNames(){
+  const fromTxs=txs.filter(x=>x.c).map(x=>x.c);
+  const fromCusts=Object.keys(customers);
+  return [...new Set([...fromTxs,...fromCusts])].filter(Boolean).sort();
+}
+
+function acInput(input, listId){
+  const val=input.value.trim().toLowerCase();
+  const list=document.getElementById(listId);
+  if(!list)return;
+  if(!val){list.innerHTML='';list.style.display='none';return;}
+  const matches=getCustomerNames().filter(n=>n.toLowerCase().startsWith(val));
+  if(!matches.length){list.style.display='none';return;}
+  list.style.display='block';
+  list.innerHTML=matches.map(n=>`
+    <div class="ac-item" onmousedown="acSelect('${input.id}','${listId}','${n}')">${n}</div>`
+  ).join('');
+}
+
+function acSelect(inputId, listId, name){
+  const el=document.getElementById(inputId);
+  if(el){
+    el.value=name;
+    // Trigger any linked listeners
+    el.dispatchEvent(new Event('input'));
+  }
+  const list=document.getElementById(listId);
+  if(list){list.innerHTML='';list.style.display='none';}
+  // Auto-fill phone if known
+  const phone=customers[name]?.phone;
+  const phoneEl=document.getElementById('sale-phone');
+  if(phone&&phoneEl&&!phoneEl.value)phoneEl.value=phone;
+}
+
+function acBlur(listId){
+  setTimeout(()=>{
+    const list=document.getElementById(listId);
+    if(list){list.innerHTML='';list.style.display='none';}
+  },150);
+}
+
 // ──
 function openSheet(){
   document.getElementById('ov').classList.add('on');
   document.getElementById('sh').classList.add('on');
   document.getElementById('l-date').value=today();
-  _parsedMpesa=null;_mpesaClassify=null;_mpesaQtys={};
+  _parsedMpesa=null;_mpesaSelected=new Set();_mpesaAllocs={};_mpesaQtys={};
   _wdRstO=0;_wdRstG=0;
   setMode('mpesa');
   document.getElementById('mpesa-msg').value='';
@@ -962,6 +1208,65 @@ function exportPDF(){
   showToast('Statement downloaded ✓');
 }
 
+
+// ── DATA EXPORT / IMPORT ──
+
+function exportData(){
+  const payload={
+    version: 1,
+    exported: new Date().toISOString(),
+    txs,
+    customers,
+    stock,
+    profitTransfers
+  };
+  const json=JSON.stringify(payload, null, 2);
+  const blob=new Blob([json],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`solance-backup-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Backup downloaded ✓');
+}
+
+function triggerImport(){
+  document.getElementById('import-file-input').click();
+}
+
+function handleImport(e){
+  const file=e.target.files[0];
+  if(!file){return;}
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      const data=JSON.parse(ev.target.result);
+      // Validate it looks like our backup
+      if(!data.txs||!Array.isArray(data.txs)){
+        showToast('Invalid backup file');
+        return;
+      }
+      // Show confirmation with counts
+      const msg=`Import ${data.txs.length} transactions, ${Object.keys(data.customers||{}).length} customers?\n\nThis will REPLACE your current data.`;
+      if(!confirm(msg)){return;}
+      // Apply
+      txs=data.txs||[];
+      customers=data.customers||{};
+      stock=data.stock||{onesies:0,glasses:0};
+      profitTransfers=data.profitTransfers||[];
+      saveAll();
+      renderAll();
+      showToast(`Imported ${txs.length} transactions ✓`);
+    } catch(err){
+      showToast('Could not read file');
+    }
+  };
+  reader.readAsText(file);
+  // Reset input so same file can be re-imported if needed
+  e.target.value='';
+}
+
 // ── NAV ──
 
 // ──
@@ -996,4 +1301,12 @@ function showToast(msg){
 
 // ── INIT ──
 renHome();
+// Hidden file input for import
+const _fi=document.createElement('input');
+_fi.type='file';
+_fi.accept='.json';
+_fi.id='import-file-input';
+_fi.style.display='none';
+_fi.addEventListener('change',handleImport);
+document.body.appendChild(_fi);
 document.querySelector('.app').insertAdjacentHTML('beforeend',`<button class="pdf-btn" onclick="exportPDF()">📄 Export statement</button>`);
