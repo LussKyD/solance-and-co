@@ -168,7 +168,11 @@
       <div class="cart-divider"><span>Total</span><span id="cart-total" style="color:var(--gr)">KSH 0</span></div>
       <div class="split-preview-mini" id="cart-split"></div>
     </div>
-    <div class="fg"><label class="fl">customer name</label><input class="finput" id="sale-name" placeholder="e.g. Joan"></div>
+    <div class="fg"><label class="fl">customer name</label><div class="ac-wrap">
+        <input class="finput" id="sale-name" placeholder="e.g. Joan"
+          oninput="acInput(this,'sale-name-list')" onblur="acBlur('sale-name-list')" autocomplete="off">
+        <div class="ac-list" id="sale-name-list"></div>
+      </div></div>
     <div class="fg"><label class="fl">phone (optional)</label><input class="finput" id="sale-phone" placeholder="e.g. 0712 345 678" type="tel"></div>
     <!-- split payment toggle -->
     <div class="fg">
