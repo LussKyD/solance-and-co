@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Solance & Co</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- HOME -->
+  <div id="s-home" class="screen on">
+    <div class="hdr">
+      <div><div class="brand">Solance<span>&</span>Co</div><div class="brand-sub">acc 315172421011</div></div>
+      <div class="live-pill"><div class="live-dot"></div><div class="live-txt" id="live-date">—</div></div>
+    </div>
+    <div class="hero">
+      <div class="hero-glow"></div>
+      <div class="hero-lbl">Account balance</div>
+      <div class="hero-amt"><span class="cur">KSH</span><span id="h-bal">0</span></div>
+      <div class="hero-sub" id="h-sub">tap + to log your first transaction</div>
+    </div>
+    <div class="fund-row" id="fund-row"></div>
+    <div class="flow">
+      <div class="flow-lbl">fund flow</div>
+      <div class="bar-track">
+        <div class="bar-seg" id="bp" style="width:0%;background:var(--gr)"></div>
+        <div class="bar-seg" id="br" style="width:0%;background:var(--am)"></div>
+        <div class="bar-seg" id="bm" style="width:0%;background:var(--bl)"></div>
+      </div>
+      <div class="bar-legend">
+        <div class="bl-i"><div class="bl-dot" style="background:var(--gr)"></div>profit</div>
+        <div class="bl-i"><div class="bl-dot" style="background:var(--am)"></div>restock</div>
+        <div class="bl-i"><div class="bl-dot" style="background:var(--bl)"></div>misc</div>
+      </div>
+    </div>
+    <div class="alerts" id="alerts"></div>
+    <div class="sec-hdr"><div class="sec-ttl">sales</div></div>
+    <div class="stat-row" id="stat-row"></div>
+    <div class="vel-card"><div class="vel-ttl">sales velocity</div><div id="vel-inner"></div></div>
+    <div class="del-card"><div class="del-ttl">delivery income</div><div id="del-inner"></div></div>
+    <div class="laundry-card"><div class="lc-ttl">laundry costs</div><div id="laundry-inner"></div></div>
+    <div class="chart-wrap"><div class="chart-lbl">revenue by customer</div><div id="chart-inner"></div></div>
+    <div class="sec-hdr"><div class="sec-ttl">recent</div><div class="sec-act" onclick="goTab('hist')">see all →</div></div>
+    <div class="tx-list" id="recent-list"></div>
+  </div>
+
+  <!-- HISTORY -->
+  <div id="s-hist" class="screen">
+    <div class="hdr" style="margin-bottom:14px"><div class="brand" style="font-size:18px">History</div></div>
+    <div class="pills" id="pills"></div>
+    <div class="tx-list" id="hist-list"></div>
+  </div>
+
+  <!-- CUSTOMERS -->
+  <div id="s-cust" class="screen">
+    <div class="hdr" style="margin-bottom:14px"><div class="brand" style="font-size:18px">Customers</div></div>
+    <div class="cust-list" id="cust-list"></div>
+  </div>
+
+  <!-- PROFIT ACCOUNT -->
+  <div id="s-profit" class="screen">
+    <div class="hdr" style="margin-bottom:14px"><div class="brand" style="font-size:18px">Profit <span>Acc</span></div></div>
+    <div class="profit-hero">
+      <div class="profit-glow"></div>
+      <div class="profit-lbl">total profit transferred out</div>
+      <div class="profit-amt" id="profit-total">0</div>
+      <div class="profit-sub" id="profit-sub">nothing transferred yet</div>
+    </div>
+    <div class="sec-hdr"><div class="sec-ttl">transfers</div><div class="sec-act" onclick="openProfitSheet()">+ add transfer</div></div>
+    <div class="profit-transfers" id="profit-transfers"></div>
+  </div>
+
+  <!-- RESTOCK -->
+  <div id="s-rst" class="screen">
+    <div class="hdr" style="margin-bottom:14px"><div class="brand" style="font-size:18px">Restock</div></div>
+    <div class="rst-hero">
+      <div class="rst-glow"></div>
+      <div class="rst-lbl">restock fund available</div>
+      <div class="rst-amount" id="rst-amt">0</div>
+      <div class="rst-sub" id="rst-units">0 units affordable</div>
+    </div>
+    <div class="sec-hdr" style="margin-top:14px"><div class="sec-ttl">current stock</div></div>
+    <div class="stock-row" id="stock-row"></div>
+    <div class="planner">
+      <div class="pl-ttl">restock planner</div>
+      <div class="step-row">
+        <div class="step-info"><div class="step-name">Onesies</div><div class="step-sub">KSH 100 / unit</div></div>
+        <div class="stepper"><button class="sb" onclick="step('o',-1)">−</button><span class="sv" id="sv-o">5</span><button class="sb" onclick="step('o',1)">+</button></div>
+      </div>
+      <div class="step-row">
+        <div class="step-info"><div class="step-name">Sunglasses</div><div class="step-sub">KSH 100 / unit</div></div>
+        <div class="stepper"><button class="sb" onclick="step('g',-1)">−</button><span class="sv" id="sv-g">5</span><button class="sb" onclick="step('g',1)">+</button></div>
+      </div>
+    </div>
+    <div class="pl-result" id="pl-result"></div>
+    <div class="sec-hdr" style="margin-top:18px"><div class="sec-ttl">withdrawal history</div></div>
+    <div class="tx-list" id="rst-wds"></div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab on" id="tab-home" onclick="goTab('home')"><span class="tab-ico">◈</span>home</button>
+  <button class="tab" id="tab-hist" onclick="goTab('hist')"><span class="tab-ico">≡</span>history</button>
+  <button class="tab tab-add" onclick="openSheet()">+</button>
+  <button class="tab" id="tab-cust" onclick="goTab('cust')"><span class="tab-ico">◎</span>people</button>
+  <button class="tab" id="tab-profit" onclick="goTab('profit')"><span class="tab-ico">◐</span>profit</button>
+</div>
+
+<!-- MAIN LOG SHEET -->
+<div class="overlay" id="ov" onclick="closeSheet()"></div>
+<div class="sheet" id="sh">
+  <div class="handle" onclick="closeSheet()"></div>
+  <div class="sh-title">New transaction</div>
+
+  <!-- MODE TABS -->
+  <div class="fg">
+    <label class="fl">mode</label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+      <button class="tbtn sg" id="tb-mpesa" onclick="setMode('mpesa')"><span class="tbi">📱</span>M-Pesa msg</button>
+      <button class="tbtn" id="tb-sale" onclick="setMode('sale')"><span class="tbi">🛍️</span>Manual sale</button>
+      <button class="tbtn" id="tb-withdrawal" onclick="setMode('withdrawal')"><span class="tbi">↓</span>Withdraw</button>
+      <button class="tbtn" id="tb-other" onclick="setMode('other')"><span class="tbi">⋯</span>Other</button>
+    </div>
+  </div>
+
+  <!-- MPESA MODE -->
+  <div id="mode-mpesa">
+    <div class="fg">
+      <label class="fl">paste SACCO / M-Pesa message</label>
+      <textarea class="finput" id="mpesa-msg" placeholder="Dear NYAKEGO ATUTI DANFORD, your 315172421011 has been credited with KES 420 received from Sammy on 2026-04-08 20:11:34. Ref: UD8O9BOBR7..." oninput="parseMpesa()"></textarea>
+    </div>
+    <div class="parse-result" id="parse-result">
+      <div class="pr-ttl">✓ parsed</div>
+      <div id="parse-rows"></div>
+    </div>
+    <div class="fg" id="mpesa-classify" style="display:none">
+      <label class="fl">what was this for?</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px" id="mpesa-type-grid"></div>
+    </div>
+    <div id="mpesa-extra" style="display:none">
+      <!-- dynamic extra fields appear here -->
+    </div>
+  </div>
+
+  <!-- MANUAL SALE MODE -->
+  <div id="mode-sale" style="display:none">
+    <div class="fg">
+      <label class="fl">items</label>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);padding:11px 13px">
+          <div><div style="font-size:13px;font-weight:600">👕 Onesie</div><div style="font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;margin-top:2px">KSH 999 each</div></div>
+          <div style="display:flex;align-items:center"><button class="sb" onclick="cartStep('onesie',-1)">−</button><span class="sv" id="cart-onesie">0</span><button class="sb" onclick="cartStep('onesie',1)">+</button></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);padding:11px 13px">
+          <div><div style="font-size:13px;font-weight:600">🕶 Sunglasses</div><div style="font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;margin-top:2px">KSH 420 each</div></div>
+          <div style="display:flex;align-items:center"><button class="sb" onclick="cartStep('glasses',-1)">−</button><span class="sv" id="cart-glasses">0</span><button class="sb" onclick="cartStep('glasses',1)">+</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="cart-summary" id="cart-summary">
+      <div class="cart-sum-ttl">order summary</div>
+      <div id="cart-lines"></div>
+      <div class="cart-divider"><span>Total</span><span id="cart-total" style="color:var(--gr)">KSH 0</span></div>
+      <div class="split-preview-mini" id="cart-split"></div>
+    </div>
+    <div class="fg"><label class="fl">customer name</label><input class="finput" id="sale-name" placeholder="e.g. Joan"></div>
+    <div class="fg"><label class="fl">phone (optional)</label><input class="finput" id="sale-phone" placeholder="e.g. 0712 345 678" type="tel"></div>
+    <!-- split payment toggle -->
+    <div class="fg">
+      <label class="fl">payment type</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+        <button class="tbtn sg" id="pt-full" onclick="setPayType('full')"><span class="tbi">✓</span>Full pay</button>
+        <button class="tbtn" id="pt-split" onclick="setPayType('split')"><span class="tbi">✂️</span>Split pay</button>
+      </div>
+    </div>
+    <div class="fg" id="split-part-field" style="display:none">
+      <label class="fl">amount received now (KSH)</label>
+      <input class="finput" id="split-now" type="number" placeholder="0">
+      <div class="split-hint" id="sp-hint" style="margin-top:8px">
+        <div class="sh2-title" id="sph-title"></div>
+        <div class="sh2-text" id="sph-text"></div>
+        <div class="sh2-bar"><div class="sh2-fill" id="sph-fill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WITHDRAWAL MODE -->
+  <div id="mode-withdrawal" style="display:none">
+    <div class="fg">
+      <label class="fl">purpose</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+        <button class="tbtn sa" id="wd-restock" onclick="setWdType('restock')"><span class="tbi">📦</span>Restock</button>
+        <button class="tbtn" id="wd-laundry" onclick="setWdType('laundry')"><span class="tbi">🧺</span>Laundry</button>
+        <button class="tbtn" id="wd-delivery" onclick="setWdType('delivery')"><span class="tbi">🛵</span>Delivery</button>
+        <button class="tbtn" id="wd-misc" onclick="setWdType('misc')"><span class="tbi">⋯</span>Misc / ops</button>
+      </div>
+    </div>
+    <div id="wd-fields"></div>
+  </div>
+
+  <!-- OTHER MODE -->
+  <div id="mode-other" style="display:none">
+    <div class="fg">
+      <label class="fl">type</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+        <button class="tbtn sr" id="tb-charge" onclick="setOther('charge')"><span class="tbi">🏦</span>Bank charge</button>
+        <button class="tbtn" id="tb-test" onclick="setOther('test')"><span class="tbi">🧪</span>Test payment</button>
+      </div>
+    </div>
+    <div class="fg"><label class="fl">amount (KSH)</label><input class="finput" id="other-amt" type="number" placeholder="0"></div>
+    <div class="fg"><label class="fl">from (optional)</label><input class="finput" id="other-name" placeholder="e.g. Miriam"></div>
+  </div>
+
+  <div class="fg"><label class="fl">date</label><input class="finput" id="l-date" type="date"></div>
+  <button class="big-btn" onclick="submitTx()">Add transaction</button>
+</div>
+
+<!-- PROFIT TRANSFER SHEET -->
+<div class="overlay" id="pt-ov" onclick="closeProfitSheet()"></div>
+<div class="sheet" id="pt-sh">
+  <div class="handle" onclick="closeProfitSheet()"></div>
+  <div class="sh-title">Log profit transfer</div>
+  <div class="fg">
+    <label class="fl">paste SACCO transfer message (or enter manually)</label>
+    <textarea class="finput" id="pt-msg" placeholder="Paste transfer confirmation here..." oninput="parseProfitMsg()"></textarea>
+  </div>
+  <div class="parse-result" id="pt-parse-result">
+    <div class="pr-ttl">✓ parsed</div>
+    <div id="pt-parse-rows"></div>
+  </div>
+  <div class="fg"><label class="fl">amount (KSH)</label><input class="finput" id="pt-amt" type="number" placeholder="0"></div>
+  <div class="fg"><label class="fl">note (optional)</label><input class="finput" id="pt-note" placeholder="e.g. April profit transfer"></div>
+  <div class="fg"><label class="fl">date</label><input class="finput" id="pt-date" type="date"></div>
+  <button class="big-btn" onclick="submitProfitTransfer()">Log transfer</button>
+</div>
+
+<!-- RESOLVE SHEET -->
+<div class="res-overlay" id="res-ov">
+  <div class="res-sheet">
+    <div class="res-handle"></div>
+    <div class="res-title" id="res-title">Classify payment</div>
+    <div class="res-sub" id="res-sub"></div>
+    <div class="res-opts" id="res-opts"></div>
+    <button class="res-cancel" onclick="closeResolve()">Cancel</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
