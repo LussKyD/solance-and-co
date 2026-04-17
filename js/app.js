@@ -377,9 +377,14 @@ function buildExtraFields(name, total){
 
   extra.innerHTML=html;
   updateAllocTotal(total);
-  // Attach split name listener if needed
+  // Always force-fill name from parsed message — works for first-time customers too
   const mcName=document.getElementById('mc-name');
-  if(mcName&&types.includes('split'))mcName.addEventListener('input',checkExistingSplit);
+  if(mcName){
+    if(!mcName.value && _parsedMpesa && _parsedMpesa.party){
+      mcName.value=_parsedMpesa.party;
+    }
+    if(types.includes('split')) mcName.addEventListener('input',checkExistingSplit);
+  }
 }
 
 function onAllocChange(type, total){
