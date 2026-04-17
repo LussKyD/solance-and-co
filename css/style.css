@@ -1866,3 +1866,42 @@ to {
 .pdf-btn:active {
   background:var(--sf2)
 }
+
+/* ── AUTOCOMPLETE ── */
+.ac-wrap {
+  position: relative;
+}
+
+.ac-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--sf2);
+  border: 1px solid var(--bd);
+  border-top: none;
+  border-radius: 0 0 var(--rs) var(--rs);
+  z-index: 50;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.ac-item {
+  padding: 10px 13px;
+  font-size: 14px;
+  font-family: 'Syne', sans-serif;
+  color: var(--tx);
+  cursor: pointer;
+  border-bottom: 1px solid var(--bd);
+  transition: background .1s;
+}
+
+.ac-item:last-child {
+  border-bottom: none;
+}
+
+.ac-item:hover {
+  background: var(--gd);
+  color: var(--gr);
+}
